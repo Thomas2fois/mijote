@@ -56,6 +56,8 @@ h3{font-size:14px;color:#B24A20;margin:22px 0 8px}
 .center{min-height:80vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px}
 .logo{width:112px;height:112px;border-radius:28px;background:#B24A20;display:flex;align-items:center;justify-content:center}
 .err{color:#B3261E;font-size:14px;min-height:20px}
+.av{width:30px;height:30px;border-radius:50%;background:#EFE5D8;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#6B5B4D;flex:none}
+.av img{width:100%;height:100%;object-fit:cover}
 </style>
 </head>
 <body>
@@ -88,7 +90,7 @@ const cur=()=>S.recipes.find(r=>r.id===S.id);
 onAuthStateChanged(auth,u=>{
   S.ready=true;S.user=u;S.denied=false;S.recipes=[];unsub&&unsub();unsub=null;
   if(u){unsub=onSnapshot(query(collection(db,'recipes'),orderBy('createdAt','desc')),
-    s=>{S.recipes=s.docs.map(d=>({id:d.id,...d.data()}));render()},
+    s=>{S.recipes=s.docs.map(d=>({id:d.id,...d.data()}));backfill();render()},
     e=>{S.denied=e.code==='permission-denied';render()});}
   render();
 });
@@ -120,13 +122,14 @@ function detailHtml(){
   const lines=t=>(t||'').split('\n').map(x=>x.trim()).filter(Boolean);
   const stat=(a,b)=>`<div class="stat"><small>${a}</small><span style="font-size:18px">${b}</span></div>`;
   const stats=(r.cookMin?stat('Cuisson',r.cookMin+' min'):'')+(r.tempC?stat('Température',r.tempC+' °C'):'');
-  return `${backBtn}
+  return `<div class="top">${backBtn}<button class="link" id="shbtn" data-act="share">Partager en PDF</button></div>
   ${r.photo?`<div class="hero"><img src="${esc(r.photo)}" alt=""></div>`:''}
   <h1 style="margin-top:16px;font-size:30px">${esc(r.title)}</h1>
-  <div class="muted" style="margin-top:6px">${esc([CATS[r.category],r.servings?r.servings+' pers.':'',mine?'Ajoutée par toi':(r.authorName?'Ajoutée par '+r.authorName:'')].filter(Boolean).join(' · '))}</div>
+  <div class="muted" style="margin-top:6px">${esc([CATS[r.category],r.servings?r.servings+' pers.':''].filter(Boolean).join(' · '))}</div>
+  ${authorRow(r)}
   ${stats?`<div class="row" style="margin-top:14px">${stats}</div>`:''}
   ${lines(r.ingredients).length?`<h3>Ingrédients</h3><div class="box">${lines(r.ingredients).map(x=>`<div>${esc(x)}</div>`).join('')}</div>`:''}
-  ${lines(r.steps).length?`<h3>Préparation</h3><div>${lines(r.steps).map((x,i)=>`<p style="margin:0 0 10px"><b>${i+1}.</b> ${esc(x)}</p>`).join('')}</div>`:''}
+  ${stepLines(r.steps).length?`<h3>Préparation</h3><div>${stepLines(r.steps).map((x,i)=>`<p style="margin:0 0 10px"><b>${i+1}.</b> ${esc(x)}</p>`).join('')}</div>`:''}
   ${mine?`<div class="row" style="margin-top:24px"><button class="btn" data-act="edit">Modifier</button><button class="btn" data-act="del">Supprimer</button></div>`:''}`;
 }
 
@@ -185,8 +188,8 @@ async function save(){
   const data={title:t,category:S.fcat,cookMin:n($('#f-cook').value),tempC:n($('#f-temp').value),servings:$('#f-on').checked?(n($('#f-people').value)||null):null,ingredients:$('#f-ing').value.trim(),steps:$('#f-steps').value.trim(),photo:S.photo||null};
   try{
     if(S.id)await updateDoc(doc(db,'recipes',S.id),data);
-    else await addDoc(collection(db,'recipes'),{...data,authorId:S.user.uid,authorName:S.user.displayName||'',createdAt:Date.now()});
-    S.view=S.id?'detail':'list';render();scrollTo(0,0);
+    else await addDoc(collection(db,'recipes'),{...data,authorId:S.user.uid,authorName:S.user.displayName||'',authorPhoto:S.user.photoURL||'',createdAt:Date.now()});
+    pdfFile=null;S.view=S.id?'detail':'list';render();scrollTo(0,0);
   }catch(e){alert('Enregistrement impossible ('+e.code+').')}
 }
 
@@ -196,10 +199,54 @@ async function login(){
   catch(e){S.err=e.code==='auth/popup-closed-by-user'?'':'Connexion impossible ('+e.code+').';render()}
 }
 
+const lines=t=>(t||'').split('\n').map(x=>x.trim()).filter(Boolean);
+const stepLines=t=>lines(t).map(x=>x.replace(/^\d+\s*[.)\-:]\s*/,''));
+function first(n){return String(n||'').trim().split(/\s+/)[0]}
+function author(r){const m=r.authorId===S.user.uid;return{name:first(m?S.user.displayName:r.authorName)||'quelqu’un',photo:m?S.user.photoURL:r.authorPhoto}}
+function authorRow(r){const a=author(r);return `<div class="row" style="margin-top:10px"><span class="av">${a.photo?`<img src="${esc(a.photo)}" alt="" referrerpolicy="no-referrer">`:esc(a.name[0]||'?')}</span><span>Ajoutée par <b>${esc(a.name)}</b></span></div>`}
+const done=new Set();
+function backfill(){const u=S.user;if(!u?.photoURL)return;S.recipes.filter(r=>r.authorId===u.uid&&!r.authorPhoto&&!done.has(r.id)).forEach(r=>{done.add(r.id);updateDoc(doc(db,'recipes',r.id),{authorPhoto:u.photoURL,authorName:u.displayName||r.authorName||''}).catch(()=>{})})}
+
+let jsp=null,pdfFile=null;
+const loadPdf=()=>jsp||(jsp=new Promise((ok,ko)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';s.onload=()=>ok(window.jspdf.jsPDF);s.onerror=()=>{jsp=null;ko(new Error('chargement'))};document.head.appendChild(s)}));
+async function imgData(src){
+  try{
+    let d=src;
+    if(!src.startsWith('data:')){const bl=await (await fetch(src)).blob();d=await new Promise((ok,ko)=>{const f=new FileReader();f.onload=()=>ok(f.result);f.onerror=ko;f.readAsDataURL(bl)})}
+    const i=await new Promise((ok,ko)=>{const x=new Image();x.onload=()=>ok(x);x.onerror=ko;x.src=d});
+    return{d,w:i.width,h:i.height};
+  }catch(e){return null}
+}
+async function makePdf(r){
+  const J=await loadPdf(),p=new J({unit:'mm',format:'a4'}),M=18,mw=174;let y=M;
+  const line=(t,size,font,style,rgb,gap)=>{p.setFont(font,style);p.setFontSize(size);p.setTextColor(...rgb);const lh=size*.46;p.splitTextToSize(t,mw).forEach(l=>{if(y+lh>282){p.addPage();y=M}y+=lh;p.text(l,M,y)});y+=gap};
+  line(r.title,24,'times','bold',[43,33,24],2);
+  line([meta(r),r.servings?r.servings+' pers.':'','Ajoutée par '+author(r).name].filter(Boolean).join(' · '),11,'helvetica','normal',[107,91,77],5);
+  if(r.photo){const im=await imgData(r.photo);if(im){const k=im.h/im.w,w=Math.min(mw,80/k),h=w*k;if(y+h>282){p.addPage();y=M}p.addImage(im.d,/png/.test(im.d.slice(0,20))?'PNG':'JPEG',M,y,w,h);y+=h+6}}
+  const sec=(t,items,num)=>{if(!items.length)return;y+=3;line(t,13,'helvetica','bold',[178,74,32],1.5);items.forEach((x,i)=>line((num?(i+1)+'. ':'• ')+x,11,'helvetica','normal',[43,33,24],1.8))};
+  sec('Ingrédients',lines(r.ingredients),0);sec('Préparation',stepLines(r.steps),1);
+  const n=p.getNumberOfPages();for(let i=1;i<=n;i++){p.setPage(i);p.setFont('helvetica','normal');p.setFontSize(9);p.setTextColor(150,140,130);p.text('Mijoté',M,290)}
+  return p.output('blob');
+}
+const fname=r=>((r.title||'recette').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\w]+/g,'-').replace(/^-+|-+$/g,'')||'recette')+'.pdf';
+async function share(){
+  const r=cur(),b=$('#shbtn');if(!r||!b)return;
+  try{
+    if(!pdfFile||pdfFile.id!==r.id){b.textContent='Préparation du PDF…';pdfFile={id:r.id,name:fname(r),blob:await makePdf(r)}}
+    const f=new File([pdfFile.blob],pdfFile.name,{type:'application/pdf'});
+    if(navigator.canShare?.({files:[f]}))await navigator.share({files:[f],title:r.title});
+    else{const a=document.createElement('a');a.href=URL.createObjectURL(pdfFile.blob);a.download=pdfFile.name;a.click()}
+    b.textContent='Partager en PDF';
+  }catch(e){
+    if(e.name==='NotAllowedError'){b.textContent='Appuie pour envoyer le PDF';return}
+    b.textContent='Partager en PDF';
+    if(e.name!=='AbortError')alert('Partage impossible ('+(e.message||e.name)+').');
+  }
+}
 const act={
-  login,logout:()=>signOut(auth),save,search,
+  login,logout:()=>signOut(auth),save,search,share,
   new:()=>{S.id=null;S.photo=null;S.fcat='plat';S.view='form';render();scrollTo(0,0)},
-  open:b=>{S.id=b.dataset.id;S.view='detail';render();scrollTo(0,0)},
+  open:b=>{S.id=b.dataset.id;S.view='detail';pdfFile=null;loadPdf().catch(()=>{});render();scrollTo(0,0)},
   back:()=>{S.view=(S.view==='form'&&S.id)?'detail':'list';render();scrollTo(0,0)},
   edit:()=>{const r=cur();S.photo=r.photo||null;S.fcat=r.category||'plat';S.view='form';render();scrollTo(0,0)},
   del:async()=>{if(!confirm('Supprimer cette recette ?'))return;try{await deleteDoc(doc(db,'recipes',S.id));S.view='list';render()}catch(e){alert('Suppression impossible ('+e.code+').')}},
