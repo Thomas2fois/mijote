@@ -218,11 +218,13 @@ async function imgData(src){
   }catch(e){return null}
 }
 async function makePdf(r){
-  const J=await loadPdf(),p=new J({unit:'mm',format:'a4'}),M=18,mw=174;let y=M;
-  const line=(t,size,font,style,rgb,gap)=>{p.setFont(font,style);p.setFontSize(size);p.setTextColor(...rgb);const lh=size*.46;p.splitTextToSize(t,mw).forEach(l=>{if(y+lh>282){p.addPage();y=M}y+=lh;p.text(l,M,y)});y+=gap};
+  const J=await loadPdf(),p=new J({unit:'mm',format:'a4'}),M=18,mw=174;let y=M,tw=mw;
+  const line=(t,size,font,style,rgb,gap)=>{p.setFont(font,style);p.setFontSize(size);p.setTextColor(...rgb);const lh=size*.46;p.splitTextToSize(t,tw).forEach(l=>{if(y+lh>282){p.addPage();y=M}y+=lh;p.text(l,M,y)});y+=gap};
+  let ph=0;
+  if(r.photo){const im=await imgData(r.photo);if(im){const k=im.h/im.w,w=Math.min(55,55/k),h=w*k;p.addImage(im.d,/png/.test(im.d.slice(0,20))?'PNG':'JPEG',M+mw-w,M,w,h);ph=h;tw=mw-w-8}}
   line(r.title,24,'times','bold',[43,33,24],2);
   line([meta(r),r.servings?r.servings+' pers.':'','Ajoutée par '+author(r).name].filter(Boolean).join(' · '),11,'helvetica','normal',[107,91,77],5);
-  if(r.photo){const im=await imgData(r.photo);if(im){const k=im.h/im.w,w=Math.min(mw,80/k),h=w*k;if(y+h>282){p.addPage();y=M}p.addImage(im.d,/png/.test(im.d.slice(0,20))?'PNG':'JPEG',M,y,w,h);y+=h+6}}
+  tw=mw;y=Math.max(y,M+ph)+4;
   const sec=(t,items,num)=>{if(!items.length)return;y+=3;line(t,13,'helvetica','bold',[178,74,32],1.5);items.forEach((x,i)=>line((num?(i+1)+'. ':'• ')+x,11,'helvetica','normal',[43,33,24],1.8))};
   sec('Ingrédients',lines(r.ingredients),0);sec('Préparation',stepLines(r.steps),1);
   const n=p.getNumberOfPages();for(let i=1;i<=n;i++){p.setPage(i);p.setFont('helvetica','normal');p.setFontSize(9);p.setTextColor(150,140,130);p.text('Mijoté',M,290)}
