@@ -65,6 +65,8 @@ h3{font-size:14px;color:#B24A20;margin:22px 0 8px}
 .bar{height:6px;background:#EFE5D8;border-radius:3px;margin-top:16px}.bar i{display:block;height:100%;background:#B24A20;border-radius:3px}
 .nav{position:fixed;left:0;right:0;bottom:0;max-width:520px;margin:0 auto;display:flex;gap:10px;padding:12px 20px calc(env(safe-area-inset-bottom) + 16px);background:#FBF7F1;border-top:1px solid #EADFD2}
 .btn:disabled{opacity:.4}
+a.btn{color:#2B2118;text-decoration:none}
+.pbar{position:fixed;left:0;right:0;bottom:0;max-width:520px;margin:0 auto;background:#fff;border-top:1px solid #EADFD2;box-shadow:0 -4px 16px rgba(0,0,0,.08);padding:12px 20px calc(env(safe-area-inset-bottom) + 12px);display:flex;flex-direction:column;gap:6px;text-align:center;z-index:5}
 </style>
 </head>
 <body>
@@ -152,8 +154,8 @@ function formHtml(){
   <div class="muted" style="font-size:13px;margin-top:14px">Photo</div>
   <div class="prev" id="prev"></div>
   <div class="row" style="margin-top:10px"><button class="btn dark" data-act="search" type="button">Pixabay</button><label class="btn" for="f-file" style="cursor:pointer">Ma photo</label></div>
-  <div class="row" style="margin-top:10px"><button class="btn" data-act="gimg" type="button">Google Images</button><button class="btn" data-act="paste" type="button">Coller l'image</button></div>
-  <p class="muted" style="font-size:12px;margin:8px 0 0">Google Images : appuie longuement sur une photo, choisis « Copier », reviens ici et touche « Coller l'image ».</p>
+  <div class="row" style="margin-top:10px"><a class="btn" data-act="gimg" href="https://www.google.com/search?tbm=isch" target="_blank" rel="noopener">Google Images</a><button class="btn" data-act="paste" type="button">Coller l'image</button></div>
+  <p class="muted" style="font-size:12px;margin:8px 0 0">Google Images : appuie longuement sur une photo, choisis « Copier », ferme avec la croix (✕) en haut à gauche, puis touche « Coller la photo ».</p>
   <input type="file" id="f-file" accept="image/*" hidden>
   <div id="found" class="found"></div><button class="link" id="rmph" data-act="nophoto" style="display:none">Retirer la photo</button>
   <div class="muted" style="font-size:13px;margin-top:14px">Catégorie</div>
@@ -167,7 +169,7 @@ function formHtml(){
 }
 
 function render(){
-  const a=$('#app');
+  const a=$('#app');if(S.view!=='form')hidePbar();
   if(!S.ready){a.innerHTML='';return}
   if(!S.user){a.innerHTML=`<div class="center"><div class="logo">${potSvg(84)}</div><h1 style="font-size:40px;margin-top:14px">Mijoté</h1><p class="muted" style="margin:0 0 24px;font-size:17px">Tes recettes, toujours sous la main.</p><button class="btn" data-act="login" style="max-width:340px;border-color:#D8CBBB;font-weight:600"><b style="color:#4285F4;font-size:20px;margin-right:12px">G</b>Continuer avec Google</button><p class="err">${esc(S.err)}</p></div>`;return}
   if(S.denied){a.innerHTML=`<div class="center"><h1>Accès réservé</h1><p class="muted">Ce compte n'est pas autorisé à utiliser Mijoté.</p><button class="btn" data-act="logout" style="max-width:240px">Se déconnecter</button></div>`;return}
@@ -294,9 +296,12 @@ function cookHtml(){
 let wl=null;
 async function wake(on){try{if(on){wl=await navigator.wakeLock?.request('screen')}else{await wl?.release();wl=null}}catch(e){}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&S.view==='cook')wake(true)});
+function showPasteBar(){if($('#pbar'))return;const d=document.createElement('div');d.id='pbar';d.className='pbar';d.innerHTML='<span class="muted">Photo copiée depuis Google Images ?</span><button class="btn pri" data-act="paste">Coller la photo</button><button class="link" data-act="pbarx">Fermer</button>';document.body.appendChild(d)}
+function hidePbar(){$('#pbar')?.remove()}
 const act={
-  gimg:()=>{const q=$('#f-title').value.trim();if(!q){alert("Saisis d'abord un titre.");return}window.open('https://www.google.com/search?tbm=isch&q='+encodeURIComponent(q+' recette'),'_blank')},
-  paste:async()=>{try{for(const x of await navigator.clipboard.read()){const t=x.types.find(y=>y.startsWith('image/'));if(t){S.photo=await shrink(await x.getType(t));showPhoto();return}}alert("Aucune image copiée. Dans Google Images, appuie longuement sur la photo puis choisis « Copier ».")}catch(e){alert("Impossible de coller l'image ("+(e.name||'erreur')+").")}},
+  gimg:(b,e)=>{const q=$('#f-title').value.trim();if(!q){e.preventDefault();alert("Saisis d'abord un titre.");return}b.href='https://www.google.com/search?tbm=isch&q='+encodeURIComponent(q+' recette');showPasteBar()},
+  pbarx:()=>hidePbar(),
+  paste:async()=>{try{for(const x of await navigator.clipboard.read()){const t=x.types.find(y=>y.startsWith('image/'));if(t){S.photo=await shrink(await x.getType(t));showPhoto();hidePbar();return}}alert("Aucune image copiée. Dans Google Images, appuie longuement sur la photo puis choisis « Copier ».")}catch(e){alert("Impossible de coller l'image ("+(e.name||'erreur')+").")}},
   fav:()=>{const id=S.id,r=doc(db,'users',S.user.uid,'favorites',id);(S.favs.has(id)?deleteDoc(r):setDoc(r,{t:Date.now()})).catch(()=>alert('Favori non enregistré.'))},
   nminus:()=>{S.n=Math.max(1,S.n-1);upd()},
   nplus:()=>{S.n=Math.min(99,S.n+1);upd()},
@@ -318,7 +323,7 @@ const act={
   pick:async b=>{const u=b.dataset.u;try{S.photo=await shrink(await (await fetch(u)).blob())}catch(e){S.photo=u}showPhoto()},
   nophoto:()=>{S.photo=null;showPhoto()}
 };
-document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(b)act[b.dataset.act]?.(b)});
+document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(b)act[b.dataset.act]?.(b,e)});
 document.addEventListener('input',e=>{
   if(e.target.id==='q'){S.q=e.target.value;$('#cards').innerHTML=cards()}
   if(e.target.id==='f-on')$('#f-people').disabled=!e.target.checked;
