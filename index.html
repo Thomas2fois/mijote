@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Mijoté">
 <meta name="theme-color" content="#FBF7F1">
@@ -11,7 +11,7 @@
 <title>Mijoté</title>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{margin:0;background:#FBF7F1;color:#2B2118;font:16px/1.4 -apple-system,system-ui,sans-serif}
+body{margin:0;touch-action:manipulation;-webkit-text-size-adjust:100%;background:#FBF7F1;color:#2B2118;font:16px/1.4 -apple-system,system-ui,sans-serif}
 #app{max-width:520px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 20px) 20px calc(env(safe-area-inset-bottom) + 110px)}
 h1,h2,.serif{font-family:Georgia,serif;font-weight:400}
 h1{font-size:34px;margin:0}
@@ -60,10 +60,10 @@ h3{font-size:14px;color:#B24A20;margin:22px 0 8px}
 .av img{width:100%;height:100%;object-fit:cover}
 .stp{width:44px;height:44px;border-radius:22px;border:1px solid #EADFD2;background:#fff;font-size:22px;line-height:1}
 .off{background:#EFE5D8;border-radius:10px;padding:8px 12px;font-size:13px;color:#6B5B4D;margin-top:10px}
-.cookw{min-height:calc(100vh - 40px);display:flex;flex-direction:column}
+.cookw{min-height:calc(100vh - 190px);min-height:calc(100dvh - 190px);display:flex;flex-direction:column}
 .big{font:28px/1.35 Georgia,serif;flex:1;margin:24px 0}
 .bar{height:6px;background:#EFE5D8;border-radius:3px;margin-top:16px}.bar i{display:block;height:100%;background:#B24A20;border-radius:3px}
-.nav{display:flex;gap:10px;padding-top:12px}
+.nav{position:fixed;left:0;right:0;bottom:0;max-width:520px;margin:0 auto;display:flex;gap:10px;padding:12px 20px calc(env(safe-area-inset-bottom) + 16px);background:#FBF7F1;border-top:1px solid #EADFD2}
 .btn:disabled{opacity:.4}
 </style>
 </head>
@@ -151,7 +151,9 @@ function formHtml(){
   <label class="f">Titre<input type="text" id="f-title" value="${esc(r.title)}"></label>
   <div class="muted" style="font-size:13px;margin-top:14px">Photo</div>
   <div class="prev" id="prev"></div>
-  <div class="row" style="margin-top:10px"><button class="btn dark" data-act="search" type="button">Chercher une photo</button><label class="btn" for="f-file" style="cursor:pointer">Ma photo</label></div>
+  <div class="row" style="margin-top:10px"><button class="btn dark" data-act="search" type="button">Pixabay</button><label class="btn" for="f-file" style="cursor:pointer">Ma photo</label></div>
+  <div class="row" style="margin-top:10px"><button class="btn" data-act="gimg" type="button">Google Images</button><button class="btn" data-act="paste" type="button">Coller l'image</button></div>
+  <p class="muted" style="font-size:12px;margin:8px 0 0">Google Images : appuie longuement sur une photo, choisis « Copier », reviens ici et touche « Coller l'image ».</p>
   <input type="file" id="f-file" accept="image/*" hidden>
   <div id="found" class="found"></div><button class="link" id="rmph" data-act="nophoto" style="display:none">Retirer la photo</button>
   <div class="muted" style="font-size:13px;margin-top:14px">Catégorie</div>
@@ -187,8 +189,10 @@ async function search(){
   if(!q){box.innerHTML='';alert("Saisis d'abord un titre.");return}
   box.innerHTML='<span class="muted">Recherche…</span>';
   try{
-    const get=async c=>(await (await fetch('https://pixabay.com/api/?key='+PIX+'&q='+encodeURIComponent(q)+'&lang=fr&image_type=photo&safesearch=true&per_page=9'+c)).json()).hits||[];
-    let h=await get('&category=food');if(!h.length)h=await get('');
+    const get=async(t,c)=>(await (await fetch('https://pixabay.com/api/?key='+PIX+'&q='+encodeURIComponent(t)+'&lang=fr&image_type=photo&safesearch=true&per_page=9'+c)).json()).hits||[];
+    const w=q.split(/\s+/),tr=[q];for(let n=w.length-1;n>=1&&tr.length<3;n--)tr.push(w.slice(0,n).join(' '));
+    let h=[];for(const t of tr){h=await get(t,'&category=food');if(h.length)break}
+    if(!h.length)h=await get(q,'');
     box.innerHTML=h.length?h.map(x=>`<button type="button" data-act="pick" data-u="${esc(x.webformatURL)}"><img src="${esc(x.previewURL)}" alt="Proposition"></button>`).join('')+'<span class="muted" style="grid-column:1/-1;font-size:12px">Photos : Pixabay</span>':'<span class="muted">Aucune photo trouvée.</span>';
   }catch(e){box.innerHTML='<span class="muted">Recherche impossible (hors ligne ?).</span>'}
 }
@@ -291,6 +295,8 @@ let wl=null;
 async function wake(on){try{if(on){wl=await navigator.wakeLock?.request('screen')}else{await wl?.release();wl=null}}catch(e){}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&S.view==='cook')wake(true)});
 const act={
+  gimg:()=>{const q=$('#f-title').value.trim();if(!q){alert("Saisis d'abord un titre.");return}window.open('https://www.google.com/search?tbm=isch&q='+encodeURIComponent(q+' recette'),'_blank')},
+  paste:async()=>{try{for(const x of await navigator.clipboard.read()){const t=x.types.find(y=>y.startsWith('image/'));if(t){S.photo=await shrink(await x.getType(t));showPhoto();return}}alert("Aucune image copiée. Dans Google Images, appuie longuement sur la photo puis choisis « Copier ».")}catch(e){alert("Impossible de coller l'image ("+(e.name||'erreur')+").")}},
   fav:()=>{const id=S.id,r=doc(db,'users',S.user.uid,'favorites',id);(S.favs.has(id)?deleteDoc(r):setDoc(r,{t:Date.now()})).catch(()=>alert('Favori non enregistré.'))},
   nminus:()=>{S.n=Math.max(1,S.n-1);upd()},
   nplus:()=>{S.n=Math.min(99,S.n+1);upd()},
@@ -322,6 +328,7 @@ document.addEventListener('change',async e=>{
 });
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 addEventListener('online',()=>{if(S.view==='list')render()});addEventListener('offline',()=>{if(S.view==='list')render()});
+['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>e.preventDefault()));
 </script>
 </body>
 </html>
